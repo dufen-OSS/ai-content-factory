@@ -1,0 +1,6 @@
+# 保证容器内脚本/Dockerfile 始终是 LF，避免 Windows CRLF 导致部署报错
+*.sh text eol=lf
+Dockerfile text eol=lf
+deploy/space/Dockerfile text eol=lf
+deploy/space/start.sh text eol=lf
+deploy/sync.sh text eol=lf
