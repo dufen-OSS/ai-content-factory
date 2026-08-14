@@ -1,0 +1,18 @@
+# Render Blueprint：连接仓库后自动创建免费 Web 服务
+# 用法：Render Dashboard -> New -> Blueprint -> 选本仓库
+services:
+  - type: web
+    name: ai-content-factory
+    runtime: python
+    repo: https://github.com/dufen-OSS/ai-content-factory
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash render/start.sh
+    envVars:
+      # 免费层默认 Mock 兜底；要真模型改成 deepseek 并加 DEEPSEEK_API_KEY
+      - key: LLM_PROVIDER
+        value: mock
+      - key: LLM_TIMEOUT
+        value: 120
+      - key: MAX_REVIEW_RETRIES
+        value: 2
