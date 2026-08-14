@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 电商内容工厂 · 多 Agent 电商内容生成 Demo</title>
+<style>
+  :root{
+    --bg:#0f1220; --card:#191e33; --card2:#202647; --line:#2c3560;
+    --txt:#e8ebf5; --muted:#9aa3c0; --accent:#5b8cff; --accent2:#7c5bff;
+    --ok:#34d399; --warn:#fbbf24; --err:#f87171;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7}
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:30px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .tag{color:var(--muted);margin-top:8px;font-size:15px}
+  .badges{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--txt)}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:28px 0}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center}
+  .stat b{font-size:26px;color:var(--accent);display:block}
+  .stat span{font-size:13px;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin:18px 0}
+  h2{font-size:20px;margin-bottom:14px;border-left:4px solid var(--accent);padding-left:10px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:14px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.cols{grid-template-columns:1fr}}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;justify-content:center}
+  .node{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:140px;text-align:center;font-size:13px}
+  .node b{font-size:14px;display:block;margin-bottom:4px}
+  .arrow{align-self:center;color:var(--muted);font-size:18px}
+  .loop{background:var(--card2);border:1px dashed var(--warn);border-radius:12px;padding:10px 14px;text-align:center;font-size:12.5px;color:var(--warn);min-width:170px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left}
+  th{background:var(--card2)}
+  .demo .io{background:#0b0e18;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:13.5px;margin:8px 0;white-space:pre-wrap}
+  .demo .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px}
+  .ok{color:var(--ok)} .warn{color:var(--warn)}
+  .ph{background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:14px}
+  .btn{display:inline-block;background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:10px;padding:10px 20px;text-decoration:none;font-size:14px;font-weight:600}
+  .btn:hover{opacity:.9}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:40px;text-align:center}
+  code{background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>AI 电商内容工厂</h1>
+  <p class="tag">输入商品信息 → 5 个 Agent 协作 → 输出可发布的带货脚本 / 种草图文 / 直播话术</p>
+  <div class="badges">
+    <span class="badge">LangGraph 多 Agent</span>
+    <span class="badge">FastAPI + Streamlit</span>
+    <span class="badge">热门内容模板拆解（七维表）</span>
+    <span class="badge">审核自动返修</span>
+    <span class="badge">LLM 可插拔：Ollama / DeepSeek / OpenAI / Mock</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>5</b><span>个 Agent 协作</span></div>
+    <div class="stat"><b>12/12</b><span>自动化测试通过（真模型）</span></div>
+    <div class="stat"><b>~10s</b><span>生成一篇完整内容（本地 GPU）</span></div>
+    <div class="stat"><b>3</b><span>内容形态：图文/脚本/直播</span></div>
+  </div>
+
+  <div class="card">
+    <h2>🎬 真实模型输出示例</h2>
+    <p class="sub">本地 qwen2.5:7b（RTX 4060）实测：输入商品信息，5-Agent 全链路 9.9s 出稿，审核一次通过。</p>
+    <div class="demo">
+      <div class="label">输入</div>
+      <div class="io">商品：XX玻尿酸保湿面霜 · 品类：护肤
+卖点：深层补水 / 成分温和 / 性价比高
+人群：25-35岁干皮女性 · 价格：129元/30ml</div>
+      <div class="label">Supervisor 自动识别</div>
+      <div class="io">目标平台：小红书 · 内容类型：种草图文</div>
+      <div class="label">成稿标题</div>
+      <div class="io">干皮救星！这个面霜我用了7天真的会谢</div>
+      <div class="label">成稿正文（节选）</div>
+      <div class="io">最近皮肤干燥到不行，涂了XX玻尿酸保湿面霜后，居然连续7天都感觉水当当的！
+这款面霜包装简约大方，质地轻薄不油腻，推开即化，吸收快。淡淡的香味很清新。
+每天早晚洁面后，取适量均匀涂抹在脸部，轻轻按摩至完全吸收。坚持使用一周后，皮肤明显变得滋润了。
+用了XX玻尿酸保湿面霜，皮肤状态真的有改善！但要注意的是，它更适合25-35岁的干皮女性哦~
+关注+收藏，评论区留肤质，帮你判断适不适合</div>
+      <div class="label">配图提示词 + 推荐标签</div>
+      <div class="io">配图 4 张 · 标签：#干皮救星 #补水神器 #测评 #种草日记 等 7 个</div>
+      <div class="label">审核结果</div>
+      <div class="io ok">✅ 通过（passed=True, retry=0）：内容完整，无明显问题。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🧠 5-Agent 工作流</h2>
+    <p class="sub">LangGraph 状态机：严格单向管线 + 唯一审核返修回边（条件路由，最多 2 轮）。</p>
+    <div class="flow">
+      <div class="node"><b>用户输入</b>商品 / 平台 / 类型<br>可选爆款文案</div>
+      <div class="arrow">→</div>
+      <div class="node"><b>① Supervisor</b>意图识别<br>任务路由</div>
+      <div class="arrow">→</div>
+      <div class="node"><b>② 选题</b>4 个差异化<br>选题方向</div>
+      <div class="arrow">→</div>
+      <div class="node"><b>③ 模板拆解</b>库内检索<br>或 LLM 拆爆款→七维表</div>
+      <div class="arrow">→</div>
+      <div class="node"><b>④ 脚本生成</b>模板×卖点<br>→ 成稿</div>
+      <div class="arrow">→</div>
+      <div class="node"><b>⑤ 审核</b>广告法合规<br>完整性</div>
+      <div class="arrow">→</div>
+      <div class="node"><b>📦 输出</b>成稿·配图·标签<br>Agent 日志</div>
+    </div>
+    <div class="flow" style="margin-top:10px">
+      <div class="loop">↩ 审核不通过 → 携带 feedback 返修 ④（条件路由，≤2 次）</div>
+      <div class="node" style="min-width:220px"><b>LLM 可插拔层</b>Ollama / DeepSeek / OpenAI / Mock（离线兜底）</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🧩 Agent 职责边界</h2>
+    <table>
+      <tr><th>Agent</th><th>职责</th><th>调 LLM</th></tr>
+      <tr><td>① Supervisor</td><td>意图识别，判定平台/内容类型</td><td>✅</td></tr>
+      <tr><td>② 选题</td><td>围绕商品生成 4 个差异化选题</td><td>✅</td></tr>
+      <tr><td>③ 模板拆解</td><td>库内检索 6 套爆款模板，或 LLM 现场拆竞品文案为七维表（标题公式/开头钩子/内容骨架/CTA/数据预估）</td><td>拆解时 ✅</td></tr>
+      <tr><td>④ 脚本生成</td><td>模板骨架 × 商品卖点 → 成稿 + 配图提示词 + 标签</td><td>✅</td></tr>
+      <tr><td>⑤ 审核</td><td>广告法违禁极限词 + 完整性检查，不通过自动返修</td><td>✅</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>📹 演示视频</h2>
+    <div class="ph">（占位：录制 3 分钟演示视频后，在此粘贴 Loom / 网盘 链接）</div>
+  </div>
+
+  <div class="card">
+    <h2>🔗 在线 Demo</h2>
+    <div class="ph">（占位：部署到 Zeabur / Render 后，在此粘贴活链接）</div>
+  </div>
+
+  <div class="card">
+    <h2>📄 设计文档</h2>
+    <p class="sub">完整架构与设计汇报：技术选型理由、需求对照、3 分钟答辩框架、面试官追问。</p>
+    <a class="btn" href="report.html" target="_blank">查看架构与设计汇报</a>
+  </div>
+
+  <p class="foot">AI 电商内容工厂 · LangGraph + FastAPI + Streamlit · LLM 可插拔 · 用于求职面试演示</p>
+
+</div>
+</body>
+</html>

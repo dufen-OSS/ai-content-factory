@@ -1,7 +1,8 @@
-"""OpenAI 兼容客户端：DeepSeek / 智谱 / 通义 / 硅基流动 等共用。"""
+"""OpenAI 兼容客户端：DeepSeek / Ollama / 智谱 / 通义 / 硅基流动 等共用。"""
 import json
 import logging
 
+import httpx
 from openai import OpenAI
 
 from .client import LLMClient
@@ -20,7 +21,15 @@ class OpenAICompatClient(LLMClient):
         timeout: float = 120.0,
         warmup: bool = False,
     ):
-        self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+        # 禁用系统代理（trust_env=False）：Windows 系统级代理会拦截 localhost
+        # 导致 Ollama 返回 502。DeepSeek 国内直连无需代理；若个别供应商需代理，
+        # 可通过环境变量显式配置（此处不读注册表代理）。
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            http_client=httpx.Client(trust_env=False),
+        )
         self._model = model
         if warmup:
             self._warmup()
