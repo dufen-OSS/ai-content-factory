@@ -1,0 +1,29 @@
+services:
+  api:
+    build: .
+    container_name: content-factory-api
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      APP_PORT: 8000
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
+      MAX_REVIEW_RETRIES: ${MAX_REVIEW_RETRIES:-2}
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  frontend:
+    build: .
+    container_name: content-factory-frontend
+    environment:
+      STREAMLIT_API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    command: ["streamlit", "run", "frontend/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    depends_on:
+      - api
