@@ -28,9 +28,13 @@ except Exception:  # noqa: BLE001 - 本地无 streamlit/secrets 时忽略
     pass
 
 from app.agents.state import ContentState, ProductInfo  # noqa: E402
+from app.db import init_db  # noqa: E402
 from app.graph import run_deconstruct, run_generate  # noqa: E402
 from app.llm import get_llm_client  # noqa: E402
+from app.task_manager import TaskManager  # noqa: E402
 from app.templates import list_templates  # noqa: E402
+
+init_db()  # 启动时初始化 SQLite（任务/内容持久化）
 
 st.set_page_config(page_title="AI 电商内容工厂", page_icon="🏭", layout="wide")
 
@@ -57,7 +61,9 @@ def build_state(product: dict, platform: str, content_type: str, deconstruct_tex
     )
 
 
-tab_gen, tab_dec, tab_arch, tab_lib = st.tabs(["🎬 内容生成", "🧩 模板拆解", "🤖 Agent 架构", "📚 模板库"])
+tab_gen, tab_batch, tab_dec, tab_arch, tab_lib = st.tabs(
+    ["🎬 内容生成", "📦 批量生成", "🧩 模板拆解", "🤖 Agent 架构", "📚 模板库"]
+)
 
 # ===================== 内容生成 =====================
 with tab_gen:
@@ -143,6 +149,90 @@ with tab_gen:
                         st.code(step.get("result"), language="json")
             except Exception as e:  # noqa: BLE001
                 st.error(f"生成失败：{e}")
+
+# ===================== 批量生成（任务调度 + 持久化） =====================
+def _parse_products(text: str) -> list[dict]:
+    products = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        name = parts[0]
+        category = parts[1] if len(parts) > 1 else ""
+        points_raw = parts[2] if len(parts) > 2 else ""
+        points = [x.strip() for x in points_raw.replace("，", ",").replace("、", ",").split(",") if x.strip()]
+        audience = parts[3] if len(parts) > 3 else ""
+        price = parts[4] if len(parts) > 4 else ""
+        products.append({
+            "name": name, "category": category, "selling_points": points,
+            "target_audience": audience, "price": price, "link": "",
+        })
+    return products
+
+
+def _render_history(manager: TaskManager) -> None:
+    batches = manager.list_batches(limit=20)
+    if not batches:
+        st.caption("暂无历史记录。运行一次批量生成后，结果会持久化在这里，刷新页面仍在。")
+        return
+    for b in batches:
+        status = f"{b['done']}/{b['total']} 完成"
+        if b["failed"]:
+            status += f"，{b['failed']} 失败"
+        if b["pending"]:
+            status += f"，{b['pending']} 排队"
+        with st.expander(f"[{b['batch_id']}] {b['created_at']} · {status}"):
+            tasks = manager.get_tasks(b["batch_id"])
+            for t in tasks:
+                content = manager.get_content(t["id"]) if t["status"] == "done" else None
+                extra = f"｜标题：{content['title']}" if content and content.get("title") else ""
+                st.markdown(f"- **{t['product_name']}** ｜ 状态：`{t['status']}`{extra}")
+                if t["error"]:
+                    st.markdown(f"  - ❌ {t['error']}")
+                if content:
+                    with st.expander("查看全文"):
+                        st.markdown(content.get("script") or "_空_")
+                        st.caption(f"配图 {len(content.get('image_prompts', []))} 张 · 标签 {content.get('hashtags', [])}")
+
+
+with tab_batch:
+    st.subheader("批量生成 · 多任务调度 + SQLite 持久化")
+    st.caption("每行一个商品：`名称|品类|卖点1,卖点2|人群|价格`。线程池并发执行，结果自动落库。")
+    with st.form("batch_form"):
+        products_text = st.text_area(
+            "商品列表（每行一个）",
+            height=110,
+            placeholder="玻尿酸保湿面霜|护肤|深层补水,成分温和|25-35岁干皮女性|129元\n无线蓝牙耳机|数码|降噪出色,续航30小时|通勤白领|399元",
+        )
+        bc1, bc2, bc3 = st.columns(3)
+        b_platform = bc1.selectbox("目标平台", PLATFORMS, key="b_platform")
+        b_type = bc2.selectbox("内容类型", CONTENT_TYPES, key="b_type")
+        max_workers = bc3.slider("并发数", 1, 3, 2, key="b_workers")
+        b_submit = st.form_submit_button("🚀 开始批量生成", type="primary")
+
+    if b_submit:
+        products = _parse_products(products_text)
+        if not products:
+            st.warning("请至少填写一行商品（格式：名称|品类|卖点|人群|价格）")
+        else:
+            tm = TaskManager()
+            batch_id = tm.create_batch(products, b_platform, b_type)
+            bar = st.progress(0.0)
+            stt = st.empty()
+
+            def _cb(done, total):
+                bar.progress(done / max(total, 1))
+                stt.write(f"进度 {done}/{total}")
+
+            st.info(f"开始处理 {len(products)} 个任务（批次 `{batch_id}`）｜ 并发 {max_workers} ｜ 真模型每篇约 1-2 分钟…")
+            tm.run_batch(batch_id, max_workers=max_workers, progress_cb=_cb)
+            bar.progress(1.0)
+            st.success("✅ 批量完成！结果已持久化到 SQLite（刷新页面仍可查看历史）")
+
+    st.divider()
+    st.subheader("📜 任务记录（持久化）")
+    _render_history(TaskManager())
 
 # ===================== 模板拆解 =====================
 with tab_dec:
